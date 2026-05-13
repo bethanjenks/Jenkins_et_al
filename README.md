@@ -15,6 +15,7 @@ The repository includes analysis pipelines for:
 - functional clustering and spatial organization of neurons
 - whole-brain population activity analysis and visualization
 - stimulus decoding and classification
+- functional connectivity analyses
 - behavioural analysis and quantification
 
 ## Repository Structure
@@ -39,7 +40,7 @@ scripts/     # reusable analysis pipelines and helper scripts
 
 ### Behaviour analyses
 
-- Bout analysis
+- Bout frequency analysis
 - Tail vigour analysis
 - Turning/laterality analysis
 - Stimulus preference analysis

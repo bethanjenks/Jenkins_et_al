@@ -1,0 +1,205 @@
+# larval_brain_analysis configuration
+# Copy this file and fill in paths for your system.
+# Pass the path to your copy when loading data:
+#   from larval_brain_analysis.config import load_config
+#   cfg = load_config("path/to/config.yaml")
+
+# ─── DATA PATHS ───────────────────────────────────────────────────────────────
+paths:
+  # Root directory for all imaging data
+  data_root: /Volumes/LaCie/larval_HuC
+
+  # Neural imaging HDF5 files
+  forebrain_h5: /Volumes/LaCie/larval_HuC/imaging/7dpf_fb_fish_dfs_final.h5
+  hindbrain_h5: /Volumes/LaCie/larval_HuC/imaging/7dpf_hb_fish_dfs_final.h5
+
+  # Population response vector (one row per neuron×trial, 'resp' column pre-computed)
+  population_response_h5: /Volumes/LaCie/larval_HuC/imaging/7dpf_wb_population_general_response_vector.h5
+  early_response_h5: /Volumes/LaCie/larval_HuC/imaging/7dpf_wb_population_early_response_vector_50%.h5
+
+  # Valence neuron correlation CSVs (output of regression scripts)
+  positive_correlations_csv: /Volumes/LaCie/larval_HuC/imaging/7dpf_positive_correlations_25s_no_HCl_1000_corrected.csv
+  negative_correlations_csv: /Volumes/LaCie/larval_HuC/imaging/7dpf_negative_correlations_25s_no_HCl_1000_corrected.csv
+
+  # Stimulus-regression results (concentration-response analysis)
+  regression_results_csv: /Volumes/LaCie/larval_HuC/imaging/regression_results/7dpf_combined_stimulus_response_sustained_25s_correlations.csv
+
+  # Brain anatomy
+  reference_brain_tif: /Volumes/LaCie/area_masks/T_AVG_HuC.tif
+  area_masks_dir: /Volumes/LaCie/area_masks
+  nmlf_mask_tif: /Volumes/LaCie/area_masks/area_masks_mapzebrain/nMLF.tiff
+  area_shorthand_json: /Volumes/LaCie/larval_HuC/imaging/brain_map_values/area_shorthand_dict.json
+
+  # Behaviour CSVs
+  forebrain_behaviour_csv: /Volumes/LaCie/larval_HuC/behavior/7dpf_fb_behavior_traces_posture.csv
+  hindbrain_behaviour_csv: /Volumes/LaCie/larval_HuC/behavior/7dpf_hb_behavior_traces_posture.csv
+
+  # Output directory for figures and results
+  output_dir: /path/to/your/output/directory
+
+# ─── FISH IDs ─────────────────────────────────────────────────────────────────
+fish_ids:
+  - [230713_fb, 230713_hb]
+  - [230714_fb, 230714_hb]
+  - [230720_fb, 230720_hb]
+  - [230727_fb, 230727_hb]
+  - [230728_fb, 230728_hb]
+  - [230810_fb, 230810_hb]
+  - [230811_fb, 230811_hb]
+  - [230817_fb, 230817_hb]
+  - [230818_fb, 230818_hb]
+  - [230919_fb, 230919_hb]
+
+# ─── STIMULI ──────────────────────────────────────────────────────────────────
+stimuli:
+  key_stimuli:
+    - ade
+    - cad_2.5mm
+    - kw
+    - fex_1
+    - qui_2.5mm
+    - pro_2.5mm
+    - ph4.5
+
+  positive_stimuli:
+    - fex_1
+    - kw
+    - pro_2.5mm
+
+  negative_stimuli:
+    - ade
+    - cad_2.5mm
+    - ph4.5
+    - qui_2.5mm
+
+  labels:
+    ade: Ade
+    cad_2.5mm: Cad
+    kw: KW
+    fex_1: Fex
+    qui_2.5mm: Qui
+    pro_2.5mm: Pro
+    ph4.5: "pH 4.5"
+    fex_2: "Fex 1:100"
+    fex_3: "Fex 1:1000"
+    cad_2.5mM: Cad 2.5mM
+    cad_250um: "Cad 250µM"
+    cad_25um: "Cad 25µM"
+    pro_2.5mM: Pro 2.5mM
+    pro_250um: "Pro 250µM"
+    pro_25um: "Pro 25µM"
+    qui_2.5mM: Qui 2.5mM
+    qui_250um: "Qui 250µM"
+    qui_25um: "Qui 25µM"
+
+  colors:
+    ade: plum
+    cad_2.5mm: mediumorchid
+    kw: forestgreen
+    fex_1: limegreen
+    qui_2.5mm: deeppink
+    pro_2.5mm: olive
+    ph4.5: fuchsia
+
+# ─── ACQUISITION PARAMETERS ───────────────────────────────────────────────────
+acquisition:
+  sampling_frequency: 3         # Hz (frames per second)
+  stimulus_start_time: 53       # seconds from recording start
+  stimulus_end_time: 63         # seconds from recording start
+  trials_per_neuron: 45
+
+# ─── ANALYSIS PARAMETERS ──────────────────────────────────────────────────────
+analysis:
+  # Smoothing
+  smoothing_sigma: 2            # Gaussian filter sigma for trace smoothing
+
+  # Valence neuron filtering
+  fdr_alpha: 0.05               # FDR-corrected p-value threshold
+
+  # PCA
+  pca_n_components: 10
+  pca_smoothing_sigma: 2
+
+  # Raster plot
+  raster_start_frame: 60
+  raster_response_threshold: 0.5
+  raster_n_neurons: 100
+  raster_random_state: 42
+  raster_stimulus_order:
+    - fex_1
+    - kw
+    - pro_2.5mm
+    - ade
+    - cad_2.5mm
+    - ph4.5
+    - qui_2.5mm
+
+  # Classification
+  n_permutations: 1000
+  n_folds_template: 3
+  n_folds_lda: 3
+  n_folds_svm: 3
+  n_folds_valence: 5
+  min_neurons_classification: 10
+  min_neurons_valence: 5
+  n_pca_components_lda: 5
+
+  # Clustering
+  n_clusters: 4
+  cluster_range: [2, 3, 4, 5]
+  clustering_random_state: 42
+  correlation_threshold: 0.3    # Min correlation to include neuron in concentration analysis
+
+  # Latency detection
+  latency_start_frame: 159
+  latency_smoothing_sigma: 4
+  latency_derivative_threshold: 0.005
+  latency_min_valid_onset: 153
+  latency_max_valid_onset: 189
+  latency_frame_rate: 3
+
+# ─── BRAIN AREAS ──────────────────────────────────────────────────────────────
+brain_areas:
+  forebrain:
+    - olfactory_bulb
+    - olfactory_epithelium
+    - pallium
+    - subpallium
+    - preoptic
+    - posterior_tuberculum
+    - dorsal_habenula
+    - ventral_habenula
+    - eminentia_thalami
+    - prethalamus
+    - rostral_hypothalamus
+    - intermediate_hypothalamus
+
+  area_plot_order:
+    - OE
+    - OB
+    - Pal
+    - SubP
+    - POA
+    - PTh
+    - EmT
+    - dHb
+    - vHb
+    - PT
+    - HR
+    - HI
+
+  area_colors:
+    OB: "#16327F"
+    OE: "#000000"
+    Pal: "#377DA3"
+    SubP: "#58C8FE"
+    PT: "#EF4066"
+    dHb: "#663200"
+    vHb: "#933264"
+    POA: "#8C8C00"
+    PTh: "#1E7F1D"
+    EmT: "#6CDA60"
+    HR: "#D9D900"
+    HI: "#EB7F25"
+
+  reference_area: OB

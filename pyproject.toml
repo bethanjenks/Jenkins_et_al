@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "jenkins-et-al"
+version = "0.1.0"
+description = "Analysis and plotting package reproducing the notebooks/scripts behind the submitted paper"
+requires-python = "==3.9.*"
+dependencies = [
+    "numpy",
+    "pandas",
+    "scipy",
+    "matplotlib",
+    "seaborn",
+    "statsmodels",
+    "scikit-learn",
+    "tables",
+    "h5py",
+    "opencv-python",
+    "adjustText",
+]
+
+[project.optional-dependencies]
+test = ["pytest"]
+
+[tool.setuptools.packages.find]
+where = ["src"]

@@ -1,1 +1,6 @@
 .DS_Store
+.ipynb_checkpoints/
+golden/
+*.egg-info/
+__pycache__/
+.pytest_cache/

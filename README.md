@@ -21,8 +21,11 @@ The repository includes analysis pipelines for:
 ## Repository Structure
 
 ```text
-notebooks/   # exploratory analyses, figure generation
-scripts/     # reusable analysis pipelines and helper scripts
+notebooks/          # exploratory analyses, figure generation (frozen at commit 2d19f3a)
+scripts/            # reusable analysis pipelines and helper scripts (frozen at commit 2d19f3a)
+src/jenkins_et_al/  # in-progress package porting the above into loading/processing/plotting
+                    # functions, verified against golden captures of the originals.
+                    # See PORTING_PLAN.md for status.
 ```
 
 ## Main Analyses

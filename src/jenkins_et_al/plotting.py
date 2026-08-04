@@ -1,6 +1,6 @@
 """General-purpose figure functions shared across neural notebooks.
 
-Holds two patterns reused across multiple already-ported notebooks:
+Holds three patterns reused across multiple already-ported notebooks:
 
 - The whole-brain neuron scatter projection: two stacked views
   (dorsal/horizontal on top, sagittal below) of a reference brain volume
@@ -10,15 +10,31 @@ Holds two patterns reused across multiple already-ported notebooks:
   purple-white-orange colormap. The same horizontal+sagittal projection
   pattern (`np.rot90` dorsal view, `np.nanmean` sagittal view, coordinate
   transform `rotated_x = coords[:, 1]`, `rotated_y = height - coords[:, 2]`)
-  recurs with a different colormap/value per notebook in
-  notebooks/neural/build_brain_map.ipynb,
-  notebooks/neural/functional_clustering_valence_neurons.ipynb, and
-  notebooks/neural/plot_regression_spatial_maps.ipynb -- those are not yet
-  ported/verified, so this function is deliberately generalized only along
-  the axis lifetime_sparseness itself needs (continuous value + colormap),
-  not unified with those other notebooks' categorical-label variants. Reuse
-  this function when porting them, extending its parameters as needed, then
-  re-verify lifetime_sparseness's own golden capture still matches.
+  recurs with a different colormap/value in
+  notebooks/neural/functional_clustering_valence_neurons.ipynb (cell 17) and
+  notebooks/neural/plot_regression_spatial_maps.ipynb (cell 2) -- those are
+  not yet ported/verified, so this function is deliberately generalized only
+  along the axis lifetime_sparseness itself needs (continuous value +
+  colormap), not unified with those other notebooks' categorical-label
+  variants. Reuse this function when porting them, extending its parameters
+  as needed, then re-verify lifetime_sparseness's own golden capture still
+  matches.
+  **Correction (port #5, build_brain_map)**: an earlier version of this
+  docstring also listed `build_brain_map.ipynb` here. Checked directly while
+  porting it: that notebook never does a per-neuron scatter -- it fills/
+  outlines whole *area* contours at one A-P slice instead (see
+  `plot_brain_area_map` below). The grouping was an unverified guess made
+  while porting #6; removed now that #5 has actually been read.
+
+- The single-slice brain-area contour map: per-area 2D contours (extracted
+  from 3D area masks via erosion + Gaussian smoothing + marching squares) at
+  one A-P slice of a reference brain volume, either as plain black outlines
+  (`area_values=None`) or filled by a colormapped per-area value with an
+  optional significance-highlighted outline. Ported from
+  notebooks/neural/build_brain_map.ipynb (cells 5 and 9, which are this same
+  function called with different arguments -- see
+  `jenkins_et_al.neural.build_brain_map` for the two thin wrappers that
+  reproduce each cell's exact original defaults).
 
 - The per-brain-area boxplot-vs-a-reference-area: colored boxes per area,
   jittered per-fish points, significance stars vs. one reference area.
@@ -45,6 +61,11 @@ import matplotlib.gridspec as gridspec
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from adjustText import adjust_text
+from matplotlib.colors import Colormap, Normalize
+from matplotlib.ticker import FuncFormatter
+from scipy.ndimage import gaussian_filter
+from skimage import measure, morphology
 
 
 def plot_neuron_scatter_on_brain(
@@ -117,6 +138,190 @@ def plot_neuron_scatter_on_brain(
     cbar = fig.colorbar(ax_horizontal.collections[0], cax=cbar_ax)
     cbar.set_label(colorbar_label, fontsize=23)
     cbar.ax.tick_params(labelsize=23)
+
+    return fig
+
+
+def extract_area_contours(
+    mask: np.ndarray,
+    slice_offset: int,
+    *,
+    erosion_radius: int = 1,
+    smoothing_sigma: float = 3,
+    contour_level: float = 0.5,
+) -> list[np.ndarray]:
+    """2D contours of one area's 3D mask at one A-P slice.
+
+    Pipeline: take the slice at index ``mask.shape[2] // 2 - slice_offset``
+    along the mask's last axis, binary-erode it, Gaussian-smooth it, then
+    extract contours via marching squares (`skimage.measure.find_contours`).
+    Returns a list of `(n_points, 2)` `(row, col)` coordinate arrays -- one
+    per disconnected contour found at that slice (usually one, sometimes
+    zero, occasionally more). Used by `plot_brain_area_map`; factored out
+    so contour data can be checked directly in tests without re-deriving it
+    from a rendered figure.
+    """
+    slice_index = mask.shape[2] // 2
+    area_2d = mask[:, :, slice_index - slice_offset]
+
+    eroded = morphology.binary_erosion(area_2d, morphology.disk(erosion_radius))
+    smoothed = gaussian_filter(eroded.astype(float), sigma=smoothing_sigma)
+    return measure.find_contours(smoothed, level=contour_level)
+
+
+def plot_brain_area_map(
+    ref_brain: np.ndarray,
+    areas: dict[str, np.ndarray],
+    area_shorthand: dict[str, str],
+    *,
+    slice_offset: int = 68,
+    area_values: pd.DataFrame | None = None,
+    area_name_col: str = "area_names",
+    value_col: str = "values",
+    pvalue_col: str | None = "p_value",
+    default_p_value: float = 1.0,
+    show_significance: bool = True,
+    significance_threshold: float = 0.05,
+    significance_color: str = "orange",
+    significance_linewidth: float = 3,
+    nonsignificance_linewidth: float = 0.5,
+    cmap: str | Colormap = "viridis",
+    vmin: float = 0.0,
+    vmax: float = 1.0,
+    nan_color: str = "gray",
+    colorbar_label: str = "",
+    colorbar_ticks: list[float] | None = None,
+    colorbar_fontsize: float = 30,
+    background_alpha: float = 0.5,
+    fill_alpha: float = 0.8,
+    figsize: tuple[float, float] = (20, 15),
+    label_fontsize: float = 15,
+    erosion_radius: int = 1,
+    smoothing_sigma: float = 3,
+    contour_level: float = 0.5,
+) -> plt.Figure:
+    """Single-slice map of brain-area contours, optionally filled/colored by a per-area value.
+
+    Source: notebooks/neural/build_brain_map.ipynb, cells 5 (outline-only,
+    ``area_values=None``) and 9 (value-filled). Both cells are this same
+    function called with different arguments; see
+    ``jenkins_et_al.neural.build_brain_map.plot_area_outline_map`` and
+    ``.plot_area_value_map`` for thin wrappers reproducing each cell's exact
+    original parameter values.
+
+    **Data this function needs:**
+
+    - ``ref_brain``: a 3D ``(z, y, x)`` reference brain image volume (e.g.
+      loaded from a ``.tif`` stack). Only used for a faint background
+      projection (``np.nanmean(ref_brain, axis=2)``) -- it is not the source
+      of the area contours themselves.
+    - ``areas``: a dict mapping brain-area name -> a 3D binary/label mask
+      array with the *same shape as* ``ref_brain``. One coronal-ish slice
+      (index ``mask.shape[2] // 2 - slice_offset`` along the last axis) is
+      taken per area and turned into a 2D contour via binary erosion,
+      Gaussian smoothing, then marching-squares contour extraction
+      (``skimage.measure.find_contours``). Iterated in dict order.
+    - ``area_shorthand``: dict mapping the same area names used as
+      ``areas`` keys to a short display label (e.g. ``"olfactory_bulb"`` ->
+      ``"OB"``). An area missing from this dict is labeled with its raw
+      (full) name instead.
+    - ``area_values`` (optional): a long-format `pandas.DataFrame` with one
+      row per brain area, giving the value (and optionally the p-value) to
+      color/annotate that area with. Required columns:
+
+      - ``area_name_col`` (default ``"area_names"``): brain-area name,
+        matching a key of ``areas``.
+      - ``value_col`` (default ``"values"``): the numeric value that
+        ``cmap``/``vmin``/``vmax`` map to a fill color. Any area present in
+        ``areas`` but absent from this dataframe is filled with
+        ``nan_color`` instead.
+      - ``pvalue_col`` (default ``"p_value"``, optional): only read when
+        ``show_significance=True``; drives the significance-highlighted
+        outline (see below). Pass ``pvalue_col=None`` for analyses that
+        don't compute a p-value per area -- areas then always get the
+        ``nonsignificance_linewidth``/black outline.
+
+      Leave ``area_values=None`` entirely for an outline-only map with no
+      fill and no colorbar (cell 5's plot).
+
+    Color/significance behavior:
+
+    - ``cmap``/``vmin``/``vmax`` control the fill colormap and its value
+      range -- pass any named colormap or `matplotlib.colors.Colormap`
+      instance, and the min/max data values it should span. A resolved copy
+      of ``cmap`` is used internally (via ``.copy()``) so ``nan_color`` is
+      never set on a colormap instance shared with other callers.
+    - Every contour always gets a plain 1px black outline. When
+      ``show_significance=True`` *and* ``area_values`` is given, a second,
+      thicker outline is drawn on top: ``significance_color`` (default
+      orange) at ``significance_linewidth`` if that area's p-value is below
+      ``significance_threshold``, else black at ``nonsignificance_linewidth``.
+      Set ``show_significance=False`` to skip this second outline entirely
+      (e.g. for analyses with no significance test).
+
+    Returns the `matplotlib.figure.Figure`; a colorbar is added only when
+    ``area_values`` is given.
+    """
+    resolved_cmap = plt.get_cmap(cmap).copy() if isinstance(cmap, str) else cmap.copy()
+    resolved_cmap.set_bad(color=nan_color)
+    norm = Normalize(vmin=vmin, vmax=vmax)
+
+    fig, ax = plt.subplots(figsize=figsize)
+    ax.imshow(np.nanmean(ref_brain, 2), cmap="gray_r", alpha=background_alpha, origin="lower")
+    ax.axis("off")
+    text_objects = []
+
+    for brain_area, mask in areas.items():
+        contours = extract_area_contours(
+            mask, slice_offset,
+            erosion_radius=erosion_radius, smoothing_sigma=smoothing_sigma, contour_level=contour_level,
+        )
+
+        shorthand_name = area_shorthand.get(brain_area, brain_area)
+
+        area_color = None
+        p_value = default_p_value
+        if area_values is not None:
+            matches = area_values[area_values[area_name_col] == brain_area]
+            if len(matches) > 0:
+                area_value = matches[value_col].values[0]
+                if pvalue_col is not None:
+                    p_value = matches[pvalue_col].values[0]
+            else:
+                area_value = np.nan
+            area_color = resolved_cmap(norm(area_value))
+
+        for contour in contours:
+            x, y = contour[:, 1], contour[:, 0]
+
+            if area_color is not None:
+                ax.fill(x, y, color=area_color, alpha=fill_alpha)
+
+            text_objects.append(
+                ax.text(np.mean(x), np.mean(y), shorthand_name, color="black",
+                        fontsize=label_fontsize, ha="center", va="center")
+            )
+            ax.plot(x, y, color="black", linewidth=1)
+
+            if area_values is not None and show_significance and pvalue_col is not None:
+                significant = p_value < significance_threshold
+                ax.plot(
+                    x, y,
+                    color=significance_color if significant else "black",
+                    linewidth=significance_linewidth if significant else nonsignificance_linewidth,
+                )
+
+    adjust_text(text_objects, ax=ax, expand_text=(1.2, 1.2))
+
+    if area_values is not None:
+        sm = plt.cm.ScalarMappable(cmap=resolved_cmap, norm=norm)
+        sm.set_array([])
+        cbar = fig.colorbar(sm, ax=ax, shrink=0.3, alpha=fill_alpha)
+        cbar.ax.yaxis.set_major_formatter(FuncFormatter(lambda v, _: f"{v:.1f}"))
+        if colorbar_ticks is not None:
+            cbar.set_ticks(colorbar_ticks)
+        cbar.set_label(colorbar_label, rotation=270, labelpad=50, fontsize=colorbar_fontsize)
+        cbar.ax.tick_params(labelsize=colorbar_fontsize)
 
     return fig
 

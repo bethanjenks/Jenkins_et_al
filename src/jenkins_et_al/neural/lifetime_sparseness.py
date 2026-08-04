@@ -50,7 +50,7 @@ import pandas as pd
 from scipy.stats import wilcoxon
 
 from jenkins_et_al.config import AREA_SHORTHAND, FOREBRAIN_AREA_COLORS
-from jenkins_et_al.plotting import plot_neuron_scatter_on_brain
+from jenkins_et_al.plotting import plot_area_comparison_boxplot, plot_neuron_scatter_on_brain
 
 #: Source: cell 3.
 KEY_STIMULI = ("ade", "pro_2.5mm", "qui_2.5mm", "cad_2.5mm", "fex_1", "kw", "ph4.5")
@@ -250,98 +250,21 @@ def plot_sparseness_boxplot(
     reference_area: str | None = None,
     palette: dict[str, str] = FOREBRAIN_AREA_COLORS,
 ):
-    """Sparseness boxplot by brain area, colored per-area, with jittered points and vs.-reference significance stars."""
-    import matplotlib.pyplot as plt
-    import seaborn as sns
+    """Sparseness boxplot by brain area vs. `reference_area`.
 
-    plot_data = data[data["area"].isin(areas_to_plot)].copy()
-
-    fig = plt.figure(figsize=(8, 6), facecolor="white")
-    ax = plt.gca()
-    ax.set_facecolor("white")
-
-    ax = sns.boxplot(
-        data=plot_data, x="area", y="sparseness_values", order=area_order,
-        color="white", width=0.7, showcaps=False, showfliers=False,
-        boxprops={"edgecolor": "black", "linewidth": 3},
-        whiskerprops={"color": "black", "linewidth": 3},
-        capprops={"color": "black", "linewidth": 3},
-        medianprops={"color": "black", "linewidth": 3},
+    Thin wrapper around `jenkins_et_al.plotting.plot_area_comparison_boxplot`
+    (unified 2026-08-04 with template_matching_classification's near-identical
+    boxplot, at the user's request -- see that function's docstring).
+    `figsize` is pinned to this function's original `(8, 6)` rather than the
+    shared function's area-count-scaled default, so this figure's appearance
+    is unchanged from its already-signed-off original.
+    """
+    return plot_area_comparison_boxplot(
+        data, "sparseness_values", areas_to_plot, area_order, pvals, palette,
+        reference_area=reference_area, ylabel="Sparseness",
+        ylim=(0.3, 0.62), yticks=[0.3, 0.4, 0.5, 0.6], significance_y=0.61,
+        figsize=(8, 6),
     )
-
-    plotted_areas = [area for area in area_order if area in plot_data["area"].unique()]
-
-    # seaborn draws each box's whiskers, caps, and median as a flat list of
-    # Line2D objects, per box, in a fixed order (2 whiskers, 2 caps, then the
-    # median) -- not part of its public API, but stable enough to index into.
-    lines = ax.get_lines()
-    num_boxes = len(plotted_areas)
-    num_lines_per_box = len(lines) // num_boxes if num_boxes > 0 else 0
-
-    for i, area in enumerate(plotted_areas):
-        color = palette[area]
-
-        box = ax.patches[i]
-        box.set_edgecolor(color)
-        box.set_linewidth(2.7)
-        box.set_facecolor("none")
-
-        for line in lines[i * num_lines_per_box: i * num_lines_per_box + 4]:
-            line.set_color(color)
-            line.set_linewidth(2.5)
-
-        if i * num_lines_per_box + 4 < len(lines):
-            median = lines[i * num_lines_per_box + 4]
-            median.set_color(color)
-            median.set_linewidth(3)
-
-    ax.set_xticklabels(ax.get_xticklabels(), fontsize=24, rotation=45, ha="center")
-    for label, area in zip(ax.get_xticklabels(), plotted_areas):
-        label.set_color(palette[area])
-
-    rng = np.random.default_rng(42)
-
-    for i, area in enumerate(plotted_areas):
-        area_data = plot_data[plot_data["area"] == area]["sparseness_values"].values
-        jittered_x = rng.normal(loc=i, scale=0.1, size=len(area_data))
-        color = palette[area]
-        ax.scatter(
-            jittered_x, area_data, facecolors="white", edgecolors=color,
-            s=55, alpha=0.6, linewidth=1.5, zorder=3,
-        )
-
-    y_pos = 0.61
-    for i, area in enumerate(area_order):
-        if reference_area is not None and area == reference_area:
-            continue
-
-        p_val = pvals.get(area, 1.0)
-        if p_val < 0.001:
-            significance = "***"
-        elif p_val < 0.01:
-            significance = "**"
-        elif p_val < 0.05:
-            significance = "*"
-        else:
-            significance = "ns"
-
-        if area in plotted_areas:
-            ax.text(i, y_pos, significance, ha="center", va="bottom", fontsize=18, color="black", weight="bold")
-
-    ax.set_xlabel("")
-    ax.set_ylabel("Sparseness", fontsize=28)
-    ax.set_ylim(0.3, 0.62)
-    ax.set_yticks([0.3, 0.4, 0.5, 0.6])
-    ax.tick_params(axis="both", labelsize=28)
-    ax.tick_params(axis="x", width=2)
-    ax.tick_params(axis="y", width=2)
-    ax.spines["top"].set_visible(False)
-    ax.spines["right"].set_visible(False)
-    ax.spines["left"].set_linewidth(2)
-    ax.spines["bottom"].set_linewidth(2)
-
-    plt.tight_layout()
-    return fig
 
 
 # ---------------------------------------------------------------------------

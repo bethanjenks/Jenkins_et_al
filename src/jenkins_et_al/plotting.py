@@ -57,6 +57,10 @@ Holds three patterns reused across multiple already-ported notebooks:
 """
 from __future__ import annotations
 
+import tempfile
+import webbrowser
+from pathlib import Path
+
 import matplotlib.gridspec as gridspec
 import matplotlib.pyplot as plt
 import numpy as np
@@ -66,6 +70,21 @@ from matplotlib.colors import Colormap, Normalize
 from matplotlib.ticker import FuncFormatter
 from scipy.ndimage import gaussian_filter
 from skimage import measure, morphology
+
+
+def show_in_browser(fig: plt.Figure, *, dpi: int = 150) -> Path:
+    """Save `fig` to a temp PNG and open it in the default web browser.
+
+    For the manual visual-inspection steps some notebooks require (e.g.
+    picking a k-means cluster-name mapping, or reading a silhouette-score
+    curve) before a script can continue -- a stand-in for Jupyter's inline
+    display when running outside a notebook. Returns the temp file path;
+    the caller is responsible for deleting it once done.
+    """
+    path = Path(tempfile.mktemp(suffix=".png"))
+    fig.savefig(path, dpi=dpi, bbox_inches="tight")
+    webbrowser.open(path.as_uri())
+    return path
 
 
 def plot_neuron_scatter_on_brain(

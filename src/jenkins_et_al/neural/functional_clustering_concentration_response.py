@@ -64,11 +64,13 @@ variant (discrete `response_condition` labels + per-condition legend, no
 colorbar) of the *continuous* value+colormap pattern in
 `jenkins_et_al.plotting.plot_neuron_scatter_on_brain` -- kept as its own
 function here rather than unified, per that function's own docstring, which
-already earmarks two other not-yet-ported notebooks
-(`functional_clustering_valence_neurons.ipynb`,
-`plot_regression_spatial_maps.ipynb`) as likely categorical variants of the
-same underlying projection code. Unify all three once each is independently
-verified.
+also earmarked `functional_clustering_valence_neurons.ipynb` (#11, confirmed
+a matching categorical variant, still not unified) as a second site.
+**Correction**: this note previously also named `plot_regression_spatial_maps.ipynb`
+(#12) here -- wrong, checked while porting it: that notebook's brain-scatter
+is a fourth, different pattern (continuous colormap, but a different one per
+valence group), not this categorical one. Not a unification candidate for
+this function.
 """
 from __future__ import annotations
 

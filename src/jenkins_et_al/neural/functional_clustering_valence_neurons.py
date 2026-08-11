@@ -94,10 +94,12 @@ the same underlying projection as
 `functional_clustering_concentration_response.plot_response_conditions_2view`
 and `jenkins_et_al.plotting.plot_neuron_scatter_on_brain` -- kept as its own
 function here rather than unified, consistent with those two modules' own
-docstrings, which already earmark this notebook as a third site of the same
-categorical pattern. Unify all three once
-`notebooks/neural/plot_regression_spatial_maps.ipynb` (the last, simplest
-consumer of this same pattern) is also independently ported and verified.
+docstrings, which already earmark this notebook as a second site of the same
+categorical pattern. **Correction**: this note previously also pointed to
+`notebooks/neural/plot_regression_spatial_maps.ipynb` (#12) as a third site
+to unify once ported -- wrong, checked while porting it: that notebook's own
+brain-scatter is a fourth, different pattern (continuous colormap, split by
+valence group), not this categorical one. Not a unification candidate here.
 
 `ATTRACTIVE`/`AVERSIVE` are this notebook's own 3-stimulus valence-preference
 groups (a subset of the 6-stimulus `STIMULI` list) -- not the same as

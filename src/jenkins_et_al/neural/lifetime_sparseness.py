@@ -13,12 +13,15 @@ notebooks with different colormaps.
 original Mann-Whitney U** -- the user changed this directly in the notebook
 (commit 95133c5, ahead of this port) as a real analysis decision, not a
 refactor-shape change. This port reflects that current file content, per the
-skill's "re-read fresh at port time" rule. `notebooks/neural/response_latency.ipynb`
-and `notebooks/neural/template_matching_classification.ipynb` share this
-same "boxplot vs. reference area" pattern and, as of this port, still use
-Mann-Whitney U -- flagging this as a new cross-notebook inconsistency
-introduced by the edit, not silently unifying it. Resolve when those
-notebooks are ported.
+skill's "re-read fresh at port time" rule. `notebooks/neural/template_matching_classification.ipynb`
+shares this same "boxplot vs. reference area" pattern and, as of this port,
+still uses Mann-Whitney U -- flagging this as a new cross-notebook
+inconsistency introduced by the edit, not silently unifying it. Resolve when
+that notebook is ported. **Correction**: this note previously also named
+`notebooks/neural/response_latency.ipynb` here -- wrong, caught while porting
+it (#7): that notebook has always used Wilcoxon (both a paired and a
+one-sample variant, for two different comparisons), confirmed unchanged
+across the frozen baseline, not a Mann-Whitney U holdout.
 
 **Confirmed bug, not reproduced**: the notebook's own nMLF-mask reassignment
 section (cell 9, `is_within_3d_mask` + the `data['area'] = data.apply(...)`

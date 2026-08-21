@@ -43,8 +43,10 @@ from __future__ import annotations
 from ast import literal_eval
 from typing import Callable
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import seaborn as sns
 from scipy.stats import combine_pvalues
 from statsmodels.stats.multitest import multipletests
 
@@ -436,6 +438,15 @@ def build_sig_matrix(
     return sig
 
 
+def add_significance_stars(ax, masked_matrix: pd.DataFrame, sig_matrix: pd.DataFrame) -> None:
+    """Overlay significance stars on a seaborn heatmap axes object."""
+    for yi, y in enumerate(masked_matrix.index):
+        for xi, x in enumerate(masked_matrix.columns):
+            if pd.notna(masked_matrix.loc[y, x]) and bool(sig_matrix.loc[y, x]):
+                ax.text(xi + 0.5, yi + 0.5, "*", ha="center", va="center_baseline",
+                        fontsize=16, fontweight="bold", color="black")
+
+
 def reduce_to_per_fish_means(
     area_pair_values: dict[tuple[str, str], dict[str, list[float]]],
     brain_areas: list[str],
@@ -533,3 +544,287 @@ def per_fish_ks_distributions(
                 }
             )
     return pd.DataFrame(records)
+
+
+# ── Plotting ─────────────────────────────────────────────────────────────
+#
+# Ported from both notebooks' Visualisation section (8.1-8.7) -- byte-
+# identical between the two apart from labels/colors/value ranges, which
+# are now explicit parameters instead of notebook globals. Every function
+# returns a `Figure` without calling `plt.show()`, consistent with every
+# other plotting function in this project.
+
+
+def style_heatmap(ax, cbar_label: str, xlabel: str, ylabel: str, color_x: str, color_y: str) -> None:
+    """Apply shared styling to a seaborn heatmap axes."""
+    ax.set_facecolor("grey")
+    cbar = ax.collections[0].colorbar
+    cbar.ax.tick_params(labelsize=26)
+    cbar.set_label(cbar_label, fontsize=26)
+    ax.tick_params(axis="both", which="both", length=0)
+    ax.set_xlabel(xlabel, color=color_x, fontsize=26)
+    ax.set_ylabel(ylabel, color=color_y, fontsize=26)
+    plt.xticks(rotation=90, fontsize=26)
+    plt.yticks(rotation=0, fontsize=26)
+
+
+def plot_distribution_real_vs_random(
+    area_pair_corr_values: dict,
+    random_pair_corr_values: dict,
+    real_label: str,
+    dist_color: str,
+    xlabel: str = "Correlation",
+) -> plt.Figure | None:
+    """Distribution: pooled real vs. pooled random-vs-random correlations,
+    with pooled Mann-Whitney/KS tests and a per-fish paired Wilcoxon test."""
+    from scipy.stats import ks_2samp, mannwhitneyu, wilcoxon
+
+    real_vals = [v for pair in area_pair_corr_values.values() for vals in pair.values() for v in vals]
+    rand_vals = [v for pair in random_pair_corr_values.values() for vals in pair.values() for v in vals]
+    if not real_vals or not rand_vals:
+        return None
+
+    u_stat, u_p = mannwhitneyu(real_vals, rand_vals, alternative="two-sided")
+    ks_stat, ks_p = ks_2samp(real_vals, rand_vals)
+
+    common_fish = sorted(
+        set(f for pair in area_pair_corr_values.values() for f in pair.keys())
+        & set(f for pair in random_pair_corr_values.values() for f in pair.keys())
+    )
+    fish_real_means, fish_rand_means = [], []
+    for fish in common_fish:
+        fish_real = np.array(
+            [v for pair in area_pair_corr_values.values() if fish in pair for v in pair[fish]], dtype=float
+        )
+        fish_rand = np.array(
+            [v for pair in random_pair_corr_values.values() if fish in pair for v in pair[fish]], dtype=float
+        )
+        fish_real = fish_real[~np.isnan(fish_real)]
+        fish_rand = fish_rand[~np.isnan(fish_rand)]
+        if len(fish_real) > 0 and len(fish_rand) > 0:
+            fish_real_means.append(np.mean(fish_real))
+            fish_rand_means.append(np.mean(fish_rand))
+    w_stat, w_p = (
+        wilcoxon(fish_real_means, fish_rand_means, alternative="two-sided")
+        if fish_real_means
+        else (np.nan, np.nan)
+    )
+
+    fig, ax = plt.subplots(figsize=(8, 6))
+    ax.hist(real_vals, bins=50, alpha=0.7, density=True, label=real_label, color=dist_color)
+    ax.hist(rand_vals, bins=50, histtype="step", linewidth=2.5, density=True, label="Random vs Random", color="black")
+    ax.axvline(np.mean(real_vals), color=dist_color, linestyle="--", linewidth=2,
+               label=f"Mean {real_label}: {np.mean(real_vals):.3f} n = {len(real_vals)}")
+    ax.axvline(np.mean(rand_vals), color="black", linestyle="--", linewidth=2,
+               label=f"Mean Random: {np.mean(rand_vals):.3f} n = {len(rand_vals)}")
+    ax.set_xlabel(xlabel, fontsize=26)
+    ax.set_ylabel("Density", fontsize=26)
+    ax.set_title(
+        f"MWU: {pval_to_stars(u_p)}   |   KS: {pval_to_stars(ks_p)}   |   Fish Wilcoxon: {pval_to_stars(w_p)}",
+        fontsize=16,
+    )
+    ax.legend(fontsize=14, loc="upper left")
+    ax.tick_params(axis="both", labelsize=26)
+    for spine in ["top", "right"]:
+        ax.spines[spine].set_visible(False)
+    for spine in ["left", "bottom"]:
+        ax.spines[spine].set_linewidth(1.8)
+    plt.tight_layout()
+    return fig
+
+
+def plot_neuron_pair_counts_heatmap(
+    summary_df: pd.DataFrame,
+    area_shorthand: dict[str, str],
+    y_areas: list[str],
+    x_areas: list[str],
+    compare_same_group: bool,
+    xlabel: str,
+    ylabel: str,
+    color_x: str,
+    color_y: str,
+    min_pairs_threshold: int,
+) -> plt.Figure | None:
+    """Mean neuron-pair count per area pair (masked below `min_pairs_threshold`)."""
+    if summary_df is None or len(summary_df) == 0:
+        return None
+    mat = build_heatmap_matrix(
+        summary_df, "n_pairs_real", area_shorthand, y_areas, x_areas, compare_same_group, agg_fn="mean"
+    )
+    masked = mat.mask(mat < min_pairs_threshold)
+    max_val = np.nanmax(masked.values)
+    vmax_rnd = int(np.ceil(max_val / 100.0) * 100)
+
+    fig, ax = plt.subplots(figsize=(6, 4))
+    sns.heatmap(masked, cmap="mako_r", annot=False, square=True, linewidths=0.5,
+                vmin=0, vmax=vmax_rnd, cbar_kws={"shrink": 0.95}, ax=ax)
+    style_heatmap(ax, "Pairs\n(/ fish)", xlabel, ylabel, color_x, color_y)
+    cbar = ax.collections[0].colorbar
+    cbar.set_ticks([0, vmax_rnd])
+    cbar.set_ticklabels([0, vmax_rnd])
+    ax.set_title("Neuron Pairs per Area", fontsize=20, pad=20)
+    plt.tight_layout()
+    return fig
+
+
+def plot_mean_correlation_heatmap(
+    summary_df: pd.DataFrame,
+    value_col: str,
+    area_shorthand: dict[str, str],
+    y_areas: list[str],
+    x_areas: list[str],
+    compare_same_group: bool,
+    min_pairs_threshold: int,
+    vmin: float,
+    vmax: float,
+    cbar_label: str,
+    title: str,
+    xlabel: str | None = None,
+    ylabel: str | None = None,
+    color_x: str | None = None,
+    color_y: str | None = None,
+    is_null: bool = False,
+) -> plt.Figure | None:
+    """Mean correlation heatmap -- reused for both the "Real" (`value_col='real_mean_r'`)
+    and "Null" (`value_col='rand_mean_mean'`) versions."""
+    if summary_df is None or len(summary_df) == 0:
+        return None
+    df_plot = filter_by_min_pairs(summary_df, min_pairs_threshold)
+    mat = build_heatmap_matrix(df_plot, value_col, area_shorthand, y_areas, x_areas, compare_same_group)
+    masked = mat.mask(mat == 0)
+
+    fig, ax = plt.subplots(figsize=(6, 4))
+    sns.heatmap(masked, vmin=vmin, vmax=vmax, cmap="bwr", annot=False, square=True,
+                linewidths=0.5, cbar_kws={"shrink": 0.95}, ax=ax)
+    if is_null:
+        ax.set_facecolor("grey")
+        cbar = ax.collections[0].colorbar
+        cbar.ax.tick_params(labelsize=26)
+        cbar.set_label(cbar_label, fontsize=26)
+        ax.tick_params(axis="both", which="both", length=0)
+        ax.set_xlabel("Rnd", color="gray", fontsize=26)
+        ax.set_ylabel("Rnd", color="gray", fontsize=26)
+        plt.xticks(rotation=90, fontsize=26)
+        plt.yticks(rotation=0, fontsize=26)
+    else:
+        style_heatmap(ax, cbar_label, xlabel, ylabel, color_x, color_y)
+    ax.set_title(title, fontsize=20, pad=20)
+    plt.tight_layout()
+    return fig
+
+
+def plot_delta_heatmap(
+    summary_df: pd.DataFrame,
+    real_col: str,
+    null_col: str,
+    p_col: str,
+    area_shorthand: dict[str, str],
+    y_areas: list[str],
+    x_areas: list[str],
+    compare_same_group: bool,
+    min_pairs_threshold: int,
+    fdr_alpha: float,
+    vmin: float,
+    vmax: float,
+    cbar_label: str,
+    title: str,
+    xlabel: str,
+    ylabel: str,
+    color_x: str,
+    color_y: str,
+    direction_gate: str | None = None,
+) -> plt.Figure | None:
+    """Delta (real - null) heatmap with significance stars -- reused for the
+    Δ-mean, Δ-95th-percentile, and Δ-5th-percentile figures.
+
+    `direction_gate`: None, `">0"`, or `"<0"` -- the 95th/5th-percentile
+    versions only show a star when the delta has the expected sign (ported
+    from each notebook's own "direction gate" comment).
+    """
+    if summary_df is None or len(summary_df) == 0:
+        return None
+    df = filter_by_min_pairs(summary_df.copy(), min_pairs_threshold)
+    df["_diff"] = df[real_col] - df[null_col]
+    if len(df) == 0:
+        return None
+
+    mat = build_heatmap_matrix(df, "_diff", area_shorthand, y_areas, x_areas, compare_same_group, agg_fn="mean")
+    masked = mat.mask(mat == 0)
+    per_area_p = fisher_combine_pvalues(df, p_col, fdr_alpha)
+    sig_matrix = build_sig_matrix(masked, per_area_p, area_shorthand, compare_same_group)
+    if direction_gate == ">0":
+        sig_matrix = sig_matrix & (masked > 0)
+    elif direction_gate == "<0":
+        sig_matrix = sig_matrix & (masked < 0)
+
+    fig, ax = plt.subplots(figsize=(6, 4))
+    sns.heatmap(masked, vmin=vmin, vmax=vmax, cmap="bwr", annot=False, square=True,
+                linewidths=0.5, cbar_kws={"shrink": 0.95}, ax=ax)
+    style_heatmap(ax, cbar_label, xlabel, ylabel, color_x, color_y)
+    ax.set_title(title, fontsize=18 if direction_gate is None else 16, pad=30 if direction_gate is None else 20)
+    add_significance_stars(ax, masked, sig_matrix)
+    plt.tight_layout()
+    return fig
+
+
+def plot_intra_vs_inter_distribution(
+    intra_vals: np.ndarray,
+    inter_vals: np.ndarray,
+    fish_intra_means: np.ndarray,
+    fish_inter_means: np.ndarray,
+    ks_d_values: np.ndarray,
+    pooled_mwu_p: float,
+    pooled_ks_stat: float,
+    pooled_ks_p: float,
+    per_fish_wilcoxon_p: float,
+    ks_d_wilcoxon_p: float,
+    dist_color: str,
+    title: str,
+    xlabel: str = "Correlation",
+    pval_to_stars_fn: Callable[[float], str] | None = None,
+) -> plt.Figure:
+    """Intra-area vs. inter-area correlation distribution -- the reconstructed
+    "intra vs inter" section, see `reduce_to_per_fish_means`."""
+    stars = pval_to_stars_fn or pval_to_stars
+    intra_color = dist_color
+    inter_color = "darkgreen"
+
+    fig, ax = plt.subplots(figsize=(8, 6))
+    ax.hist(intra_vals, bins=50, alpha=0.55, density=True, label="Intra-area", color=intra_color)
+    ax.hist(inter_vals, bins=50, histtype="step", linewidth=2.5, density=True, label="Inter-area", color=inter_color)
+    ax.axvline(np.mean(intra_vals), color=intra_color, linestyle="--", linewidth=2)
+    ax.axvline(np.mean(inter_vals), color=inter_color, linestyle="--", linewidth=2)
+
+    stats_text = (
+        "Pooled pairs\n"
+        f"Intra n = {len(intra_vals)}\n"
+        f"Inter n = {len(inter_vals)}\n"
+        f"MWU: p = {pooled_mwu_p:.2e} ({stars(pooled_mwu_p)})\n"
+        f"KS: D = {pooled_ks_stat:.3f}, p = {pooled_ks_p:.2e} ({stars(pooled_ks_p)})\n"
+        f"intra mean = {np.mean(intra_vals):.4f}\n"
+        f"inter mean = {np.mean(inter_vals):.4f}\n\n"
+        "Per-fish means\n"
+        f"Intra = {np.mean(fish_intra_means):.3f} ± "
+        f"{np.std(fish_intra_means, ddof=1) / np.sqrt(len(fish_intra_means)):.3f}\n"
+        f"Inter = {np.mean(fish_inter_means):.3f} ± "
+        f"{np.std(fish_inter_means, ddof=1) / np.sqrt(len(fish_inter_means)):.3f}\n"
+        f"Wilcoxon: p = {per_fish_wilcoxon_p:.3e} ({stars(per_fish_wilcoxon_p)})\n\n"
+        "Per-fish KS D\n"
+        f"mean D = {np.mean(ks_d_values):.3f}\n"
+        f"median D = {np.median(ks_d_values):.3f}\n"
+        f"Wilcoxon vs 0: p = {ks_d_wilcoxon_p:.3e} ({stars(ks_d_wilcoxon_p)})"
+    )
+    ax.text(0.98, 0.98, stats_text, transform=ax.transAxes, ha="right", va="top", fontsize=12,
+            bbox=dict(boxstyle="round,pad=0.35", facecolor="white", edgecolor="0.7", alpha=0.95))
+
+    ax.set_xlabel(xlabel, fontsize=18)
+    ax.set_ylabel("Density", fontsize=18)
+    ax.set_title(title, fontsize=16)
+    ax.legend(fontsize=13, loc="upper left", frameon=False)
+    ax.tick_params(axis="both", labelsize=14)
+    for spine in ["top", "right"]:
+        ax.spines[spine].set_visible(False)
+    for spine in ["left", "bottom"]:
+        ax.spines[spine].set_linewidth(1.5)
+    plt.tight_layout()
+    return fig
